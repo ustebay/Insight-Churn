@@ -1,0 +1,1 @@
+This file explains the code for Insight Churn project.
