@@ -232,25 +232,19 @@ services_time_series = make_timeSeries_pd(all_s)
 
 
 # Generate time series for scores and work type
+startTime = time.time()
+nps_scores = pd.DataFrame(columns=services_time_series.columns, index=services_time_series.index)
+office_shifts = pd.DataFrame(data = 0, columns=services_time_series.columns, index=services_time_series.index)
 
-#startTime = time.time()
-#nps_scores = pd.DataFrame(columns=services_time_series.columns, index=services_time_series.index)
-#office_shifts = pd.DataFrame(data = 0, columns=services_time_series.columns, index=services_time_series.index)
-#
-#for i in services_time_series.columns:
-#    for j in services_time_series.index:
-#        ix = (services_and_ratings['provider_id']== i) & (services_and_ratings.service_date==j)
-#        if ix.sum()>0:
-#            nps_scores.loc[nps_scores.index==j,i] = services_and_ratings.loc[ix,'nps_score'].mean()
-#            office_shifts.loc[nps_scores.index==j,i] = services_and_ratings.loc[ix,'office'].sum()
+for i in services_time_series.columns:
+   for j in services_time_series.index:
+       ix = (services_and_ratings['provider_id']== i) & (services_and_ratings.service_date==j)
+       if ix.sum()>0:
+           nps_scores.loc[nps_scores.index==j,i] = services_and_ratings.loc[ix,'nps_score'].mean()
+           office_shifts.loc[nps_scores.index==j,i] = services_and_ratings.loc[ix,'office'].sum()
 
-#nps_scores.head()
-#nps_scores.to_pickle('nps_scores.pkl') 
-#office_shifts.to_pickle('office_shifts.pkl') 
-#endTime = time.time()
-#print str((endTime - startTime)/60) + ' minutes'
-nps_scores = pd.read_pickle('/Users/deniz/Research/Insight_Churn/data/nps_scores_all.pkl')
-office_shifts = pd.read_pickle('/Users/deniz/Research/Insight_Churn/data/office_shifts_all.pkl')
+endTime = time.time()
+print str((endTime - startTime)/60) + ' minutes'
 
 
 #%% dictionary of all service times: keys=providers
