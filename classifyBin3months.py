@@ -41,9 +41,6 @@ data_train.head()
 
 
 # %%
-features_cols = ['id','churned_in_target','city_id', 'age','years_of_experience','occupation_ratio_1',\
-'occupation_ratio_2','double_shift_ratio_1','double_shift_ratio_2','total_holidays_initial','average_client_score_1','average_client_score_2']
-
 features_cols = ['id','churned_in_target', 'city_id','age','years_of_experience',\
                  'total_holidays_initial','average_client_score','occupation_ratio',\
                  'double_shift_ratio','office_shifts_ratio']
@@ -145,12 +142,12 @@ plt.legend()
 
 # %%
 
-# Logistic regression
-C1 = 1.0/7
-C2 = 1.0/5
+# Logistic regression regularization parameter (C = 1/lambda)
+C1 = 1.0/7 # L1 
+C2 = 1.0/5 # L2
 # Create different classifiers:
 classifiers = {
-               'L1 logistic': LogisticRegression(C=C1, penalty='l1')
+               'L1 logistic': LogisticRegression(C=C1, penalty='l1'),
                'L2 logistic (OvR)': LogisticRegression(C=C2, penalty='l2')
                }
 
@@ -188,7 +185,7 @@ for index, (name, classifier) in enumerate(classifiers.items()):
     
     plt.legend(loc="lower right")
     plt.tick_params(axis='both', which='major', labelsize=16)
-   plt.savefig('ROC.png') 
+    plt.savefig('ROC.png') 
 
 
 # Statmodels
@@ -196,24 +193,6 @@ logit = sm.Logit(y_train,X_train)
 # fit the model
 result = logit.fit_regularized(method='l1',alpha=1/C1) 
 print result.summary()
-
-# %%
-idx = [u'age', u'total_holidays_initial',
-       u'average_client_score', u'occupation_ratio']
-names = ['Client score','Workload','Age','Time-off']
-coeffs = classifier.coef_[0][[3,4,0,2]]
-
-
-fig = plt.figure(figsize=(8,5))
-sns.set_style("whitegrid", {'axes.grid' : False})
-
-plt.barh(range(len(coeffs)),coeffs, align='center')
-plt.yticks(xrange(len(coeffs)), names)
-plt.tick_params(axis='both', which='major', labelsize=16)
-plt.xlabel('Coefficient value', fontsize=16)
-plt.axvline(0, color='gray')
-plt.tight_layout()
-plt.savefig('coefficients.png')
 
 # %%
 
