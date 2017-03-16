@@ -5,13 +5,11 @@
 # date: 25/01/2017
 # author: Deniz Ustebay
 # description: Connect to POSTGRES database, create features 
-			   from time series and static data,
-               save train and test datasets for classification
-               (making sure there's no leakage over time)
+               from time series and static data,
+               perform survival analysis)
 """
 
 from sqlalchemy import create_engine
-from sqlalchemy_utils import database_exists, create_database
 import psycopg2
 import pandas as pd
 import numpy as np
@@ -21,14 +19,14 @@ import matplotlib.gridspec as gridspec
 import os
 from collections import defaultdict
 import time
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
 import seaborn as sns
-import statsmodels.api as sm
 from datetime import timedelta, datetime, date
 import random
-from sklearn.model_selection import train_test_split
-import matplotlib.ticker as plticker
+
+from lifelines import KaplanMeierFitter
+from lifelines import NelsonAalenFitter
+from lifelines import CoxPHFitter
+from lifelines import AalenAdditiveFitter
 
 
 os.chdir('/Users/deniz/Research/Insight_Churn/')
@@ -45,14 +43,14 @@ engine.table_names()
 con = None
 con = psycopg2.connect(database = dbname, user = username)
 
-
 #%%
+
 initial_period = 28
 target_period = 28*3
-# compute statistics from the initial_period, and classify if they will quit in target_period
+# compute statistics from the initial_period, and classify if workers will quit in target_period
 
 
-# this function creates time series dataframe from dictionary of id:dates
+# this function creates time series dataframe from dictionary of provider:service_dates
 def make_timeSeries_pd(s):
     df_final = pd.DataFrame()
     for w in s.keys():
@@ -66,7 +64,7 @@ def make_timeSeries_pd(s):
         df_final = df_final.join(df,how='outer')
     return df_final
 
-# query for PROVIDERS
+# query for PROVIDERS:
 sql_query = """
 SELECT p.id, p.started_datetime, p.finished_datetime, p.birthday, p.provider_hometown_id, p.provider_source_id,
 p.city_id, p.years_of_experience, p.average_rating, s.resigned FROM providers p
@@ -115,53 +113,23 @@ provider_df = provider_df.join(pd.DataFrame(
         data=((provider_df.started_datetime-provider_df.birthday)
         / np.timedelta64(1, 'Y')),
         index=provider_df.index, columns=['age']),how='outer')
-        
-        
-# Plot number of days in company
-sns.set_style("whitegrid", {'axes.grid' : False})
-fig = plt.figure(figsize=(10,6))
-plot = fig.add_subplot(111)
-provider_df[provider_df['churned']==True]['days_in_company'].hist(bins=30)
-plt.ylabel("Count", fontsize=24)
-plt.xlabel('Days in company', fontsize=24)
-plt.grid(False)
-plot.spines['right'].set_visible(False)
-plot.spines['top'].set_visible(False)
-plot.yaxis.set_ticks_position('left')
-plot.xaxis.set_ticks_position('bottom')
-loc = plticker.MultipleLocator(base=15.0) # this locator puts ticks at regular intervals
-plot.yaxis.set_major_locator(loc)
-loc = plticker.MultipleLocator(base=5.0) # this locator puts ticks at regular intervals
-plot.xaxis.set_major_locator(loc)
-plt.tick_params(axis='both', which='major', labelsize=22)
-plt.tight_layout()
-plt.savefig('distributionTenure.png')
-
-# remove current emplyees that are in the company for less than target_period
-ix = ((provider_df.days_in_company<target_period) & (provider_df.churned==False))==False
-provider_df = provider_df.ix[ix]
-print str(sum(~ix)) + ' removed for they joined less than target period ago' 
-
-# remove churned employees that were in the company for less than initial_period
-ix = ((provider_df.days_in_company<initial_period) & (provider_df.churned==True))==False
-provider_df = provider_df.ix[ix]
-print str(sum(~ix)) + ' removed for they churned before initial period' 
 
 # flag for churned in the target period
 provider_df = \
 provider_df.join(pd.DataFrame(data=np.array((provider_df.days_in_company < target_period) &\
                                             (provider_df.churned==True)), \
         index=provider_df.index, columns=['churned_in_target']),how='outer')
-                      
+                          
 print str(provider_df.shape[0]) + ' rows in the final' 
 
+
+# %%
 
 a =  ((provider_df['churned_in_target']==True).sum())*100
 b =  ((provider_df['churned']==True).sum())
 
 print str(a/b) + '% of all that left churned in the target period'
-
-# %%
+#%%
 
 # JOIN SERVICES and PROVIDERS tables, ONLY FINISHED SERVICES, ONE ROW PER SHIFT:
 sql_query = """
@@ -221,7 +189,6 @@ remove_ids = set(provider_df['id'])-set(services_df['provider_id'])
 for i in remove_ids:
     provider_df = provider_df[provider_df['id']!=i]
 provider_ids = provider_df['id']
-
 
 #%% dictionary of all service times: keys=providers
 all_s = defaultdict(int)
@@ -298,7 +265,6 @@ for i in provider_ids:
 
 
 # %%
-    
 
 provider_df = provider_df[['started_datetime', 'finished_datetime', 'birthday','average_rating',\
 'days_in_company','provider_hometown_id', 'provider_source_id', 'id','churned','resigned',\
@@ -307,21 +273,38 @@ provider_df = provider_df[['started_datetime', 'finished_datetime', 'birthday','
 'total_holidays_initial','average_client_score',\
 'office_shifts_ratio']]
 
-provider_df = provider_df[provider_df['office_shifts_ratio'].isnull()==False]
-provider_df = provider_df[provider_df['years_of_experience'].isnull()==False]
-provider_df = provider_df[provider_df['average_client_score'].isnull()==False]
-provider_df = provider_df[provider_df['total_holidays_initial'].isnull()==False]
 
-data_train, data_test, y_train, y_test = train_test_split(provider_df,range(provider_df.shape[0]), test_size=0.2, random_state=8557)
+# SURVIVAL ANALYSIS
 
-data_train.to_pickle('dataset_forLogisticRegression_TRAIN.pkl') 
-data_test.to_pickle('dataset_forLogisticRegression_TEST.pkl') 
 
-print str(provider_df.shape[0]) + ' rows in the full' 
-print str(data_train.shape[0]) + ' rows in the train' 
-print str(data_test.shape[0]) + ' rows in the test' 
+T = provider_df["days_in_company"]
+C = provider_df["churned"]
 
-# %% 
-print 'Is there class imbalance?'
-print 'churned samples: ' +  str((provider_df['churned_in_target']==True).sum())
-print 'not churned samples: ' +  str((provider_df['churned_in_target']==False).sum())
+
+kmf = KaplanMeierFitter()
+kmf.fit(T, event_observed=C )
+naf = NelsonAalenFitter()
+naf.fit(T,event_observed=C)
+
+f = 'total_holidays_initial' 
+fig = plt.figure(figsize=(10,6))
+ax = plt.subplot(111)
+sns.set_style("white", {'axes.grid' : False})
+sns.despine()
+th = provider_df[f].median()
+feature1 = provider_df[f] >th
+feature2 = provider_df[f] <=th
+
+kmf.fit(T[feature1], event_observed=C[feature1], label="More requests for time-off")
+kmf.plot(ax=ax, ci_force_lines=False,lw=3)
+kmf.fit(T[feature2], event_observed=C[feature2], label="Fewer requests for time-off")
+kmf.plot(ax=ax, ci_force_lines=False,lw=3)
+plt.tick_params(axis='both', which='major', labelsize=18)
+plt.ylabel('Survival function',fontsize=27)
+plt.xlabel('Timeline (days)',fontsize=28)
+plt.legend(fontsize=24)
+loc = plticker.MultipleLocator(base=0.2)
+plt.ylim([0,1.01])
+ax.yaxis.set_major_locator(loc)
+plt.tight_layout()
+plt.savefig('KM_timeOff.png')
