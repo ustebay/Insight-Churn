@@ -291,13 +291,15 @@ fig = plt.figure(figsize=(10,6))
 ax = plt.subplot(111)
 sns.set_style("white", {'axes.grid' : False})
 sns.despine()
-th = provider_df[f].median()
-feature1 = provider_df[f] >th
-feature2 = provider_df[f] <=th
 
-kmf.fit(T[feature1], event_observed=C[feature1], label="More requests for time-off")
+# Divide the workers into two equal-sized groups at the median time off value:
+th = provider_df[f].median()
+group1 = provider_df[f] >th
+group2 = provider_df[f] <=th
+
+kmf.fit(T[group1], event_observed=C[group1], label="More requests for time-off")
 kmf.plot(ax=ax, ci_force_lines=False,lw=3)
-kmf.fit(T[feature2], event_observed=C[feature2], label="Fewer requests for time-off")
+kmf.fit(T[group2], event_observed=C[group2], label="Fewer requests for time-off")
 kmf.plot(ax=ax, ci_force_lines=False,lw=3)
 plt.tick_params(axis='both', which='major', labelsize=18)
 plt.ylabel('Survival function',fontsize=27)
